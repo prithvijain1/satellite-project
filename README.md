@@ -6,7 +6,7 @@ the reported results.
 
 > Replace the placeholder repository URL in the manuscript with the actual public
 > URL once the repository is published, e.g.
-> `https://github.com/<author-account>/satellite-sr-hybrid-gan`.
+> `https://github.com/<author-account>/satellite-sr-code-release`.
 
 ## 1. Method overview
 
@@ -31,13 +31,13 @@ layers → single logit). It is trained with a binary cross-entropy (with-logits
 adversarial objective. *No spectral normalization is used.*
 
 ### Loss
-`L_G = 0.01 · L1 + 1.0 · VGG19(relu5_4) + 0.005 · BCEWithLogits`
+`L_G = 1.0 · L1 + 0.01 · VGG19(relu5_4) + 0.005 · BCEWithLogits`  (manuscript Eq. 26)
 
 ## 2. Installation
 
 ```bash
-git clone https://github.com/<author-account>/satellite-sr-hybrid-gan.git
-cd satellite-sr-hybrid-gan
+git clone https://github.com/<author-account>/satellite-sr-code-release.git
+cd satellite-sr-code-release
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
@@ -71,7 +71,10 @@ python scripts/make_splits.py --image-dir /data/RSSCN7       --name rsscn7   --s
 ```
 
 The generated split files are committed under `splits/` so the exact partition
-is fixed across machines.
+is fixed across machines. The committed UC Merced lists (`splits/ucmerced_{train,val,test}.txt`,
+1470 / 315 / 315 images for the seed-42 70/15/15 partition) store **image basenames**;
+`make_splits.py` writes absolute paths on your machine, so either re-run it on your copy of
+UC Merced or prepend your image directory to the committed basenames.
 
 **Step 2 — train (three seeds → mean ± std):**
 
@@ -95,12 +98,61 @@ python evaluate.py --config configs/default.yaml \
 ```
 
 **Step 4 — non-ideal degradation (Table 10):** set `degradation: blur_noise`
-in the config (7×7 Gaussian blur σ=1.5 → ×4 bicubic → additive noise σ=10/255),
+in the config (7×7 Gaussian blur σ=1.2 → ×4 bicubic → additive noise σ=5/255),
 then repeat Steps 2–3.
 
-**Ablation study (Table 9):** the four variants (CNN-only, CNN+Transformer,
-CNN+GAN, full model) are obtained by toggling the Transformer/adversarial terms;
-see comments in `train.py` and `src/losses.py`.
+**Ablation study (Table 9)** — one command per variant via `--variant`:
+
+```bash
+bash scripts/reproduce_table9_ablation.sh
+# or a single variant:
+python train.py --config configs/default.yaml --variant I \
+    --train-split splits/ucmerced_train.txt --val-split splits/ucmerced_val.txt \
+    --out runs/ablation_I_seed42 --seed 42
+```
+
+Variants: `I` = CNN-only (L1, no GAN), `II` = CNN+Transformer (no GAN),
+`III` = CNN+GAN (no Transformer), `IV` = full proposed model. Variant IV gives the
+highest PSNR/SSIM (highest pixel consistency); Variant I the highest LPIPS.
+
+**Main benchmarks (Tables 5–8):**
+
+```bash
+bash scripts/reproduce_table5_8.sh
+```
+
+**Recent-methods comparison (Table 11)** — UC Merced ×4. The table reported in the
+paper has two kinds of rows, kept strictly separate:
+
+1. **Published figures** — MBGPIN [29] (31.34 / 0.912) and DEGAN [31] (28.90 / 0.796),
+   quoted with a `*` and an explicit citation in
+   `configs/recent/published_figures.yaml`. They follow each paper's own protocol, so
+   they are indicative, not strictly protocol-identical.
+2. **Protocol-identical rows** — the **Proposed** model and the **SwinIR** baseline are
+   trained and scored with *this* repo's code under the common pipeline (×4 bicubic,
+   fixed 70/15/15 split, identical PSNR/SSIM/LPIPS scripts), so their three columns are
+   directly comparable. Reproduce them with:
+
+```bash
+bash scripts/reproduce_table11.sh        # trains/evaluates Proposed; writes runs/table11.csv
+bash scripts/reproduce_table5_8.sh       # provides the SwinIR baseline row, same protocol
+```
+
+Other recent Transformer-/GAN-/wavelet-/Mamba-based methods (BD-VITGAN [32],
+DTWSTSR [34], HAM [40]) report only on different benchmarks/protocols and are compared
+**qualitatively** in Table 1 of the paper. They are therefore *not* listed as numeric
+rows in Table 11. If you want to add a strictly protocol-identical row for any of them,
+the optional adapter retrains the official repo under our pipeline:
+
+```bash
+# optional extension: fill official_repo URLs in configs/recent/*.yaml and the
+# TRAIN_CMDS/INFER_CMDS dicts in scripts/retrain_external.py, then re-run:
+bash scripts/reproduce_table11.sh
+```
+
+No benchmark value is fabricated: only the two published figures are quoted (with `*`),
+every other listed row is measured by this repo, and any method you have not retrained
+is simply omitted rather than given an invented number.
 
 ## 5. Baselines
 
