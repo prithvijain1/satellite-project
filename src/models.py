@@ -93,14 +93,21 @@ class SARB(nn.Module):
 
 class Generator(nn.Module):
     def __init__(self, in_channels=3, out_channels=3, nf=64, gc=32,
-                 num_blocks=16, embed_dim=256, num_heads=8, num_layers=4, img_size=64):
+                 num_blocks=16, embed_dim=256, num_heads=8, num_layers=4, img_size=64,
+                 use_transformer=True, use_sarb=True, use_hff=True):
         super().__init__()
+        self.use_transformer = use_transformer
+        self.use_sarb = use_sarb
+        self.use_hff = use_hff
         self.shallow_conv = nn.Conv2d(in_channels, nf, 3, 1, 1)
         self.lrelu = nn.LeakyReLU(negative_slope=0.2, inplace=True)
         self.rrdb_stack = nn.Sequential(*[RRDB(nf, gc) for _ in range(num_blocks)])
-        self.transformer = TransformerContextEncoder(nf, embed_dim, num_heads, num_layers, img_size)
-        self.sarb = SARB(nf)
-        self.hff_conv = nn.Conv2d(nf * 2, nf, 3, 1, 1)
+        if use_transformer:
+            self.transformer = TransformerContextEncoder(nf, embed_dim, num_heads, num_layers, img_size)
+        if use_sarb:
+            self.sarb = SARB(nf)
+        # HFF fuses concat[RRDB, refined]; if disabled, a 1:1 conv keeps channel count
+        self.hff_conv = nn.Conv2d(nf * 2, nf, 3, 1, 1) if use_hff else None
         self.up_conv1 = nn.Conv2d(nf, nf * 4, 3, 1, 1)
         self.pixel_shuffle1 = nn.PixelShuffle(upscale_factor=2)
         self.up_conv2 = nn.Conv2d(nf, nf * 4, 3, 1, 1)
@@ -112,10 +119,16 @@ class Generator(nn.Module):
         f0 = self.lrelu(self.shallow_conv(x))
         f_rrdb = self.rrdb_stack(f0)
         f_res = f_rrdb + f0
-        f_tf = self.transformer(f_res)
-        f_fuse = f_tf + f_rrdb
-        f_sarb = self.sarb(f_fuse)
-        f_hff = self.hff_conv(torch.cat([f_rrdb, f_sarb], dim=1))
+        if self.use_transformer:
+            f_tf = self.transformer(f_res)
+            f_fuse = f_tf + f_rrdb
+        else:
+            f_fuse = f_res
+        f_refined = self.sarb(f_fuse) if self.use_sarb else f_fuse
+        if self.hff_conv is not None:
+            f_hff = self.hff_conv(torch.cat([f_rrdb, f_refined], dim=1))
+        else:
+            f_hff = f_refined
         out = self.lrelu(self.pixel_shuffle1(self.up_conv1(f_hff)))
         out = self.lrelu(self.pixel_shuffle2(self.up_conv2(out)))
         out = self.tanh(self.final_conv(out))

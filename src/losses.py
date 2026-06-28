@@ -1,7 +1,7 @@
 """Loss functions: pixel (L1), VGG-19 perceptual (relu5_4), and adversarial (BCE-with-logits).
 
 Generator loss = lambda_pixel * L1 + lambda_percep * VGG + lambda_adv * BCE
-Default weights match the manuscript: lambda_pixel=0.01, lambda_percep=1.0, lambda_adv=0.005.
+Default weights match the manuscript (Eq. 26): lambda_pixel=1.0, lambda_percep=0.01, lambda_adv=0.005.
 """
 import torch
 import torch.nn as nn
@@ -26,7 +26,7 @@ class VGGPerceptualLoss(nn.Module):
 
 
 class HybridLossEvaluator:
-    def __init__(self, lambda_pixel=1e-2, lambda_percep=1.0, lambda_adv=5e-3, device="cpu"):
+    def __init__(self, lambda_pixel=1.0, lambda_percep=1e-2, lambda_adv=5e-3, device="cpu"):
         self.lambda_pixel = lambda_pixel
         self.lambda_percep = lambda_percep
         self.lambda_adv = lambda_adv

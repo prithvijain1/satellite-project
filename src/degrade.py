@@ -2,8 +2,8 @@
 
 Two protocols are provided so that every table in the paper can be reproduced:
   * 'bicubic'      : x4 bicubic down-sampling only (Tables 5-9).
-  * 'blur_noise'   : 7x7 Gaussian blur (sigma=1.5) -> x4 bicubic -> additive
-                     Gaussian noise (sigma=10/255), clipped to [0,1] (Table 10).
+  * 'blur_noise'   : 7x7 Gaussian blur (sigma=1.2) -> x4 bicubic -> additive
+                     Gaussian noise (sigma=5/255), clipped to [0,1] (Table 10).
 
 All operations are applied in RGB space and are fully deterministic given the
 configured sigmas, so LR-HR pairs are identical across runs and machines.
@@ -19,8 +19,13 @@ def bicubic_downsample(hr_img: Image.Image, scale=4) -> Image.Image:
 
 
 def blur_noise_degrade(hr_img: Image.Image, scale=4, blur_ksize=7,
-                       blur_sigma=1.5, noise_sigma=10.0, seed=None) -> Image.Image:
-    """Non-ideal degradation pipeline used for the robustness experiment (Table 10)."""
+                       blur_sigma=1.2, noise_sigma=5.0, seed=None) -> Image.Image:
+    """Non-ideal degradation pipeline used for the robustness experiment (Table 10).
+
+    Manuscript settings: 7x7 Gaussian blur with sigma=1.2, then x4 bicubic, then
+    zero-mean additive Gaussian noise with sigma=5/255 (i.e. 5.0 on the 0-255 scale),
+    clipped to the valid intensity range.
+    """
     arr = np.asarray(hr_img).astype(np.float32)
     # 1) Gaussian blur (per channel, separable kernel handled by cv2)
     blurred = cv2.GaussianBlur(arr, (blur_ksize, blur_ksize), blur_sigma)
